@@ -1,0 +1,26 @@
+cabal-version:      3.4
+name:               brilliant
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            BSD-2-Clause
+license-file:       LICENSE
+author:             Mark Barbone
+maintainer:         barbone@cs.cornell.edu
+-- copyright:
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+executable brilliant
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:    Bril, CFG
+    -- other-extensions:
+    build-depends:    base ^>=4.17.2.1, aeson, text, scientific, bytestring, containers
+    hs-source-dirs:   app
+    default-language: GHC2021
+    default-extensions: StrictData, BangPatterns, OverloadedStrings, BlockArguments, LambdaCase, ImportQualifiedPost, GeneralizedNewtypeDeriving, StandaloneDeriving, DerivingVia
