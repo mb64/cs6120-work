@@ -1,0 +1,16 @@
+@main(n: int) {
+.lbl:
+  x: int = const 6;
+  jmp .lbl;
+.lbl2:
+  jmp .lbl2;
+  jmp .lbl;
+  jmp .lbl2;
+  jmp .lbl;
+  y: int = const 7;
+  jmp .lbl2;
+  jmp .lbl;
+  ret y;
+.lbl3:
+  jmp .lbl3;
+}

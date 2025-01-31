@@ -37,8 +37,8 @@ testJSONRoundTrip (Program fs) = do
 validateCFG :: Program -> IO ()
 validateCFG (Program fs) = for_ fs \(Function _ _ _ code) -> do
   let cfg = buildCFG code
-  putStrLn "CFG is:"
-  print cfg
+  -- putStrLn "CFG is:"
+  -- print cfg
   case wellFormedCFG cfg of
     Left msg -> fail $ "got a bad CFG: " ++ msg
     Right () -> pure ()
@@ -46,6 +46,14 @@ validateCFG (Program fs) = for_ fs \(Function _ _ _ code) -> do
 main :: IO ()
 main = do
   prog <- loadJSON
+
+  -- For now, include a bunch of assertions...
   testJSONRoundTrip prog
   validateCFG prog
+
+  -- ...even though the main "task" is counting the number of basic blocks.
+  let numBBs = sum [length bbs | let Program fs = prog
+                               , Function _ _ _ code <- fs
+                               , let CFG _ _ bbs = buildCFG code]
+  putStrLn $ "There are " ++ show numBBs ++ " basic blocks total."
 
