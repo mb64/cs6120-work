@@ -3,6 +3,7 @@ module Bril where
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Char
+import Data.Maybe
 import Data.Foldable
 import Data.Aeson hiding (Bool)
 import Data.Aeson qualified as Aeson
@@ -149,7 +150,7 @@ instance FromJSON Jump where
             pure $ Br arg l1 l2
           parseRet o = do
             expectOp "ret" o
-            args <- o .: "args"
+            args <- fromMaybe [] <$> o .:? "args"
             case args of
               [] -> pure $ Ret Nothing
               [x] -> pure $ Ret (Just x)
@@ -161,7 +162,7 @@ instance FromJSON CodeItem where
 
 instance FromJSON Function where
   parseJSON = withObject "function" \o -> do
-    args <- o .:?= "args"
+    args <- fromMaybe [] <$> o .:? "args"
     Function
       <$> o .: "name"
       <*> traverse (\arg -> (,) <$> arg .: "name" <*> arg .: "type") args
