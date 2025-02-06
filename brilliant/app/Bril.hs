@@ -20,16 +20,22 @@ data Op = Add | Mul | Sub | Div | Eq | Lt | Gt | Le | Ge | Not | And | Or
 type Label = Text
 type Var = Text
 type FuncRef = Text
-type Dest = (Var, Type)
+data Dest = Dest Var Type deriving (Show, Eq, Ord)
 
 data Lit = IntLit Int | BoolLit Bool deriving (Show, Eq, Ord)
 
 data Instr
-  = Const Dest Lit
+  = Constant Dest Lit
   | Op Dest Op [Var]
   | Call (Maybe Dest) FuncRef [Var]
   | Effect Op [Var]
   deriving (Show, Eq, Ord)
+
+isPure :: Instr -> Bool
+isPure (Constant _ _) = True
+isPure (Op _ _ _) = True
+isPure (Call _ _ _) = False
+isPure (Effect _ _) = False
 
 data Jump
   = Jmp Label
@@ -42,6 +48,49 @@ data CodeItem
   | Instr Instr
   | Jump Jump
   deriving (Show, Eq, Ord)
+
+-- | Code traversals
+data Visitor f = Visitor
+  { visitUse :: Var -> f Var
+  , visitDef :: Dest -> f Dest
+  , visitOp :: Op -> f Op
+  , visitLabel :: Label -> f Label
+  }
+
+defaultVisitor :: Applicative f => Visitor f
+defaultVisitor = Visitor pure pure pure pure
+
+visitVars :: Applicative f => (Var -> f Var) -> Visitor f
+visitVars f = Visitor f (\(Dest x t) -> Dest <$> f x <*> pure t) pure pure
+
+class Code a where
+  visit :: Applicative f => Visitor f -> a -> f a
+
+instance Code Var where visit = visitUse
+instance Code Dest where visit = visitDef
+instance Code Op where visit = visitOp
+instance (Traversable f, Code a) => Code (f a) where
+  visit v = traverse (visit v)
+
+instance Code Instr where
+  visit v (Constant d n) = Constant <$> visit v d <*> pure n
+  visit v (Op d o xs) = Op <$> visit v d <*> visit v o <*> visit v xs
+  visit v (Call d f xs) = Call <$> visit v d <*> pure f <*> visit v xs
+  visit v (Effect o xs) = Effect <$> visit v o <*> visit v xs
+
+instance Code Jump where
+  visit v (Jmp l) = Jmp <$> visitLabel v l
+  visit v (Br x l1 l2) = Br <$> visit v x <*> visitLabel v l1 <*> visitLabel v l2
+  visit v (Ret x) = Ret <$> visit v x
+
+instance Code CodeItem where
+  visit v (Jump j) = Jump <$> visit v j
+  visit v (Instr i) = Instr <$> visit v i
+  visit v (Label l) = Label <$> visitLabel v l
+
+instance Code Function where
+  visit v (Function name params ret code) =
+    Function name <$> visit v params <*> pure ret <*> visit v code
 
 data Function = Function Text [Dest] (Maybe Type) [CodeItem] deriving (Show, Eq, Ord)
 newtype Program = Program [Function] deriving (Show, Eq, Ord)
@@ -57,11 +106,11 @@ instance ToJSON Lit where
 
 instance ToJSON Instr where
   toJSON i = object $ case i of
-    Const d v -> dest d ++ ["op" .= ("const" :: String), "value" .= v]
+    Constant d v -> dest d ++ ["op" .= ("const" :: String), "value" .= v]
     Op d o a -> dest d ++ op o ++ args a
-    Call d f a -> foldMap dest d ++ ["funcs" .= [f]] ++ args a
+    Call d f a -> foldMap dest d ++ ["op" .= ("call" :: String), "funcs" .= [f]] ++ args a
     Effect o a -> op o ++ args a
-    where dest (x,t) = ["dest" .= x, "type" .= t]
+    where dest (Dest x t) = ["dest" .= x, "type" .= t]
           op o = ["op" .= o]
           args a = ["args" .= a]
 
@@ -79,7 +128,7 @@ instance ToJSON CodeItem where
 instance ToJSON Function where
   toJSON (Function name args ty instrs) = object $
     [ "name" .= name
-    , "args" .= [object ["name" .= x, "type" .= t] | (x,t) <- args]
+    , "args" .= [object ["name" .= x, "type" .= t] | Dest x t <- args]
     ] ++ tyPair ++ ["instrs" .= instrs]
     where tyPair = foldMap (\t -> ["type" .= t]) ty
 
@@ -124,18 +173,25 @@ expectOp op obj = do
   when (op /= op') $ fail $ "expected " ++ op ++ ", got " ++ op'
 
 instance FromJSON Instr where
-  parseJSON = withObject "instr" \o -> parseConst o <|> parseOp o <|> parseCall o <|> parseEffect o
-    where dest o = (,) <$> o .: "dest" <*> o .: "type"
-          maybeDest o = fmap Just (dest o) <|> pure Nothing
-          func o = do
-            [f] <- o .: "funcs"
-            pure f
-          parseConst o = do
-            expectOp "const" o
-            Const <$> dest o <*> o .: "value"
-          parseOp o = Op <$> dest o <*> o .: "op" <*> o .: "args"
-          parseCall o = Call <$> maybeDest o <*> func o <*> o .: "args"
-          parseEffect o = Effect <$> o .: "op" <*> o .: "args"
+  parseJSON = withObject "instr" \o -> do
+    let dest o = Dest <$> o .: "dest" <*> o .: "type"
+        maybeDest o = fmap Just (dest o) <|> pure Nothing
+        func o = do
+          [f] <- o .: "funcs"
+          pure f
+    o .: "op" >>= \case
+      "const" -> Constant <$> dest o <*> o .: "value"
+      "call" -> Call <$> maybeDest o <*> func o <*> o .: "args"
+      (_ :: String) -> maybeDest o >>= \case
+        Just d -> Op d <$> o .: "op" <*> o .: "args"
+        Nothing -> Effect <$> o .: "op" <*> o .: "args"
+    -- parseConstant o <|> parseOp o <|> parseCall o <|> parseEffect o
+    --       parseConstant o = do
+    --         expectOp "const" o
+    --         Constant <$> dest o <*> o .: "value"
+    --       parseOp o = Op <$> dest o <*> o .: "op" <*> o .: "args"
+    --       parseCall o = Call <$> maybeDest o <*> func o <*> o .: "args"
+    --       parseEffect o = Effect <$> o .: "op" <*> o .: "args"
 
 instance FromJSON Jump where
   parseJSON = withObject "jump" \o -> parseJmp o <|> parseBr o <|> parseRet o
@@ -165,7 +221,7 @@ instance FromJSON Function where
     args <- fromMaybe [] <$> o .:? "args"
     Function
       <$> o .: "name"
-      <*> traverse (\arg -> (,) <$> arg .: "name" <*> arg .: "type") args
+      <*> traverse (\arg -> Dest <$> arg .: "name" <*> arg .: "type") args
       <*> o .:? "type"
       <*> o .: "instrs"
 

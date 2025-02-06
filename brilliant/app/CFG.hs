@@ -19,6 +19,10 @@ import Control.Monad
 data BB = BB Label [Label] [Instr] Jump
         deriving (Show, Eq)
 
+instance Code BB where
+  visit v (BB l ls is j) =
+    BB <$> visitLabel v l <*> traverse (visitLabel v) ls <*> visit v is <*> visit v j
+
 -- | A control-flow graph.
 --
 -- The label is the (canonical) label of the entry block.
@@ -38,12 +42,6 @@ wellFormedCFG (CFG start can bbs) = do
     Left "labels canonicalized wrong"
   unless (and [ l `elem` (cl:ls) | (l,cl) <- Map.toList can, let BB _ ls _ _ = bbs Map.! cl ]) $ do
     Left "label map is wrong"
-
--- | Flatten a CFG
-cfgToCodeItems :: CFG -> [CodeItem]
-cfgToCodeItems (CFG start _ bbs) =
-  Jump (Jmp start) :
-    foldMap (\(BB l ls is j) -> [Label l] ++ map Label ls ++ map Instr is ++ [Jump j]) bbs
 
 -- | Finalize the CFG by building the map that canonicalizes labels
 basicBlocksToCFG :: Label -> [BB] -> CFG
@@ -91,6 +89,14 @@ buildCFG items = basicBlocksToCFG startLabel bbs
                 _ -> let (n, l) = next 0 in (n, l, items)
               (ls, is, term, rest) = start n cs
           in (l, BB l ls is term : rest)
+
+-- | Canonicalize jumps
+canonicalizeJumpsCFG :: CFG -> CFG
+canonicalizeJumpsCFG (CFG start can bbs) = CFG start can (fmap f bbs)
+  where f (BB cl ls is j) = BB cl ls is (canon j)
+        canon (Jmp l) = Jmp (can Map.! l)
+        canon (Br x l1 l2) = Br x (can Map.! l1) (can Map.! l2)
+        canon (Ret x) = Ret x
 
 -- | Filter out unreachable basic blocks
 cfgDeadCodeElim :: CFG -> CFG

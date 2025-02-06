@@ -1,7 +1,8 @@
 module Main where
 
 import Bril
-import CFG
+import CFG (buildCFG, wellFormedCFG)
+import Opt
 import qualified Data.Text.IO as T
 import qualified Data.ByteString.Lazy as BSL
 import Data.Aeson
@@ -51,9 +52,9 @@ main = do
   testJSONRoundTrip prog
   validateCFG prog
 
-  -- ...even though the main "task" is counting the number of basic blocks.
-  let numBBs = sum [length bbs | let Program fs = prog
-                               , Function _ _ _ code <- fs
-                               , let CFG _ _ bbs = buildCFG code]
-  putStrLn $ "There are " ++ show numBBs ++ " basic blocks total."
+  -- ...even though the actual task is to run optimizations
+  let optimize = fromOptFunction . tdce . toOptFunction
+      optimizeProg (Program fs) = Program (map optimize fs)
 
+  BSL.putStr $ encode $ optimizeProg prog
+  putStrLn ""
