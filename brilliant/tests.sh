@@ -8,7 +8,14 @@ one_test() {
   basename="$(basename "$f")"
   ARGS=`sed -ne 's/.*ARGS: \(.*\)/\1/p' "$f"`
   echo "$basename"
-  diff -y <(cat "$f" | bril2json | cabal run | brili $ARGS) <(cat "$f" | bril2json | brili $ARGS) || echo "$basename: FAILED"
+  before=`mktemp`
+  after=`mktemp`
+  diff -y <(cat "$f" | bril2json | brili -p $ARGS 2>$before ) <(cat "$f" | bril2json | cabal run | brili -p $ARGS 2>$after ) || echo "$basename: FAILED"
+  before_count=$(cat $before | sed -ne 's/total_dyn_inst: \(.*\)/\1/p')
+  after_count=$(cat $after | sed -ne 's/total_dyn_inst: \(.*\)/\1/p')
+  if [ $before_count -lt $after_count ] ; then
+    echo "$basename: REGRESSION: $before_count to $after_count"
+  fi
 }
 
 one_arg() {

@@ -3,6 +3,7 @@ module Opt where
 
 import Bril
 import CFG
+import Data.List
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
@@ -42,13 +43,81 @@ toOptFunction (Function name params out code) =
 
   in OptFunction name params' out start bbs
 
+-- | Filter out unreachable basic blocks
+cfgDeadCodeElim :: OptFunction -> OptFunction
+cfgDeadCodeElim (OptFunction name params out start bbs) =
+    OptFunction name params out start $ Map.filterWithKey (\l _ -> l `Set.member` reachable) bbs
+  where go r l
+          | l `Set.member` r = r
+          | otherwise = let BB _ _ _ term = bbs Map.! l
+                        in foldl' go (Set.insert l r) (lbls term)
+
+        lbls (Jmp l) = [l]
+        lbls (Br _ l1 l2) = [l1, l2]
+        lbls (Ret _) = []
+
+        reachable = go mempty start
+
+-- | Peephole opts. At the moment it just removes pointless jumps.
+--
+-- At some point in the future it could do more
+peephole :: [CodeItem] -> [CodeItem]
+peephole (Jump (Jmp l):Label l':rest) | l == l' = peephole (Label l':rest)
+peephole [Jump (Ret Nothing)] = []
+peephole (i:rest) = i : peephole rest
+peephole [] = []
+
+removeRedundantLabels :: [CodeItem] -> [CodeItem]
+removeRedundantLabels code = filter shouldKeep code
+  where usedLabels = Set.fromList $ foldMap getLabels code
+
+        getLabels (Jump j) = lbls j
+        getLabels _ = []
+
+        lbls (Jmp l) = [l]
+        lbls (Br _ l1 l2) = [l1, l2]
+        lbls (Ret _) = []
+
+        shouldKeep (Label l) = l `Set.member` usedLabels
+        shouldKeep _ = True
+
 -- | Re-serialize all the basic blocks.
 --
--- This could be better (i.e. create a good layout for the blocks)
+-- Please filter out unreachable basic blocks before doing this
+--
+-- This tries to pick an order that minimizes static instruction count
 fromOptFunction :: OptFunction -> Function
 fromOptFunction (OptFunction name params out start bbs) =
-  Function name params out (Jump (Jmp start) : foldMap toCode bbs)
-  where toCode (BB l ls is j) = [Label l] ++ map Label ls ++ map Instr is ++ [Jump j]
+  Function name params out code
+  where toCode (BB l _ is j) = [Label l] ++ map Instr is ++ [Jump j]
+
+        code = removeRedundantLabels $ peephole $
+          go (Map.fromList ([(l, (l, toCode bb)) | (l, bb) <- Map.toList bbs]
+                              ++ [ ("$start", ("$start", [Jump (Jmp start)]))
+                                 , ("$end", ("$end", []))]))
+             (Map.fromList ([(l, l) | (l, _) <- Map.toList bbs]
+                              ++ [("$end", "$end"), ("$start", "$start")]))
+             ([(l,l') | (l, BB _ _ _ (Jmp l')) <- Map.toList bbs]
+                ++ [("$start", start)]
+                ++ [(l, "$end") | (l, BB _ _ _ (Ret _)) <- Map.toList bbs])
+        
+        -- Build up chunks
+        -- maintain a map label ---> (chunk, label of last bb in chunk)
+        -- and also a map last block ---> head label
+        go chunks heads [] =
+          let endLbl = heads Map.! "$end"
+              (_, startCode) = chunks Map.! "$start"
+              middleCode = foldMap snd (Map.delete "$start" (Map.delete endLbl chunks))
+              (_, endCode) = chunks Map.! endLbl
+          in if endLbl == "$start" then startCode else startCode ++ middleCode ++ endCode
+        go chunks heads ((s,t):ls) | s == t = go chunks heads ls
+        go chunks heads ((s,t):ls) = case (Map.lookup s heads, Map.lookup t chunks) of
+          (Just sLbl, Just (end,next)) ->
+            let (_,prev) = chunks Map.! sLbl
+                chunks' = Map.insert sLbl (end, prev++next) (Map.delete t chunks)
+                heads' = Map.insert end sLbl (Map.delete s heads)
+            in go chunks' heads' ls
+          _ -> go chunks heads ls
 
 -- | Traverse basic blocks. Useful for local optimizations
 traverseBBs :: Applicative f => (BB -> f BB) -> OptFunction -> f OptFunction

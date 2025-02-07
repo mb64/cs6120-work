@@ -98,24 +98,4 @@ canonicalizeJumpsCFG (CFG start can bbs) = CFG start can (fmap f bbs)
         canon (Br x l1 l2) = Br x (can Map.! l1) (can Map.! l2)
         canon (Ret x) = Ret x
 
--- | Filter out unreachable basic blocks
-cfgDeadCodeElim :: CFG -> CFG
-cfgDeadCodeElim (CFG start can bbs) = basicBlocksToCFG start bbs'
-  where go s l =
-          let cl = can Map.! l in
-          if cl `Set.member` s then s else
-          let BB _ _ _ term = bbs Map.! l in
-          foldl' go (Set.insert l s) (lbls term)
-
-        lbls (Jmp l) = [l]
-        lbls (Br _ l1 l2) = [l1, l2]
-        lbls (Ret _) = []
-
-        reachable = go mempty start
-
-        bbs' = [bbs Map.! l | l <- Set.toList reachable]
-
-
-
-
 
