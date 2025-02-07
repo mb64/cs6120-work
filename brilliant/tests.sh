@@ -1,12 +1,14 @@
 #!/bin/bash
 # Simple test: run the program on an input .bril file supplied in the command line
 
+cabal build
+
 one_test() {
   f="$1"
   basename="$(basename "$f")"
   ARGS=`sed -ne 's/.*ARGS: \(.*\)/\1/p' "$f"`
   echo "$basename"
-  diff <(cat "$f" | bril2json | cabal run | brili $ARGS) <(cat "$f" | bril2json | brili $ARGS) || echo "$basename: FAILED"
+  diff -y <(cat "$f" | bril2json | cabal run | brili $ARGS) <(cat "$f" | bril2json | brili $ARGS) || echo "$basename: FAILED"
 }
 
 one_arg() {

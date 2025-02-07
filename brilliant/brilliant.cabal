@@ -20,7 +20,7 @@ executable brilliant
     main-is:          Main.hs
     other-modules:    Bril, CFG, Opt
     -- other-extensions:
-    build-depends:    base ^>=4.17.2.1, aeson, text, scientific, bytestring, containers
+    build-depends:    base ^>=4.17.2.1, aeson, text, scientific, bytestring, containers, mtl
     hs-source-dirs:   app
     default-language: GHC2021
     default-extensions: StrictData, BangPatterns, OverloadedStrings, BlockArguments, LambdaCase, ImportQualifiedPost, GeneralizedNewtypeDeriving, StandaloneDeriving, DerivingVia

@@ -22,6 +22,9 @@ type Var = Text
 type FuncRef = Text
 data Dest = Dest Var Type deriving (Show, Eq, Ord)
 
+destVar :: Dest -> Var
+destVar (Dest v _) = v
+
 data Lit = IntLit Int | BoolLit Bool deriving (Show, Eq, Ord)
 
 data Instr

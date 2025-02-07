@@ -53,7 +53,7 @@ main = do
   validateCFG prog
 
   -- ...even though the actual task is to run optimizations
-  let optimize = fromOptFunction . tdce . toOptFunction
+  let optimize = fromOptFunction . tdce . lvn . toOptFunction
       optimizeProg (Program fs) = Program (map optimize fs)
 
   BSL.putStr $ encode $ optimizeProg prog

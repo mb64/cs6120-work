@@ -11,6 +11,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Functor.Identity
 import Data.Functor.Const
+import Control.Monad.State
 
 -- | Function during optimization
 --
@@ -61,8 +62,9 @@ mapBBs f = runIdentity . traverseBBs (Identity . f)
 -- | Trivial dead code elimination, a local optimization.
 --
 -- Remove pure instructions that are either overwritten before use, are never used.
-tdce :: OptFunction -> OptFunction
-tdce input = mapBBs local input
+tdce, tdceOnePass :: OptFunction -> OptFunction
+tdce = iterToFixpoint tdceOnePass
+tdceOnePass input = mapBBs local input
   where allUsed = varUses input
         local (BB l ls is j) = BB l ls (fst (go is)) j
         go [] = ([], allUsed)
@@ -71,9 +73,95 @@ tdce input = mapBBs local input
                 isUsed = any (`Set.member` used) $ varDefs i
                 used' = (used Set.\\ varDefs i) `Set.union` varUses i
 
+-- | Iterate to convergence. A bad idea in practice
+iterToFixpoint :: Eq a => (a -> a) -> (a -> a)
+iterToFixpoint f = go
+  where go x = if x == f x then x else go (f x)
+
+visitUses :: (Applicative f, Code a) => (Var -> f Var) -> a -> f a
+visitUses f = visit (defaultVisitor { visitUse = f })
+
+mapUses :: Code a => (Var -> Var) -> a -> a
+mapUses f = runIdentity . visitUses (Identity . f)
+
+visitDefs :: (Applicative f, Code a) => (Dest -> f Dest) -> a -> f a
+visitDefs f = visit (defaultVisitor { visitDef = f })
+
 varDefs :: Code a => a -> Set Var
-varDefs = getConst . visit (defaultVisitor { visitDef = \(Dest v _) -> Const (Set.singleton v) })
+varDefs = getConst . visitDefs (\(Dest v _) -> Const (Set.singleton v))
 
 varUses :: Code a => a -> Set Var
-varUses = getConst . visit (defaultVisitor { visitUse = \v -> Const (Set.singleton v) })
+varUses = getConst . visitUses (\v -> Const (Set.singleton v))
+
+
+-- | Local value numbering
+--
+lvn :: OptFunction -> OptFunction
+lvn input = mapBBs lvnOneBasicBlock input
+
+data LvnValue = LvnConst Lit | LvnOp Op [Either Var Int] | LvnCall Int deriving (Show, Eq, Ord)
+
+lvnOneBasicBlock :: BB -> BB
+lvnOneBasicBlock (BB l ls is j) =
+    let (is', j') = go mempty mempty mempty is
+    in BB l ls is' j'
+  where varNameFor n = "lvn_" <> l <> "_" <> T.pack (show n)
+
+        mapVar env idToHome v = case Map.lookup v env of
+          Just i -> idToHome Map.! i
+          Nothing -> v
+
+        varToId env v = case Map.lookup v env of
+          Just i -> Right i
+          Nothing -> Left v
+
+        maybeWrite d@(Dest v _) val env valToId idToHome insts =
+          case Map.lookup val valToId of
+            Just i -> -- Already computed!
+              (Map.insert v i env, valToId, idToHome, [Op d Id [idToHome Map.! i]])
+            Nothing -> (++insts) <$> write d val env valToId idToHome
+
+        write d@(Dest v t) val env valToId idToHome =
+          let newId = Map.size idToHome
+              env' = Map.insert v newId env
+              valToId' = Map.insert val newId valToId
+              idToHome' = Map.insert newId v idToHome
+          in case Map.lookup v env of
+              Just oldId -> -- there was already a var there :( move it elsewhere
+                let vOld = varNameFor oldId
+                    idToHome'' = Map.insert oldId vOld idToHome'
+                in (env', valToId', idToHome'', [Op (Dest vOld t) Id [v]])
+              Nothing -> (env', valToId', idToHome', [])
+
+        -- env
+        -- map from number to canonical home
+        -- map from value to number
+        go env valToId idToHome [] =
+          ([], mapUses (mapVar env idToHome) j)
+        go env valToId idToHome (Constant d x:is) =
+          let (env', valToId', idToHome', writeIs) = maybeWrite d (LvnConst x) env valToId idToHome [Constant d x]
+              (rest, j') = go env' valToId' idToHome' is
+          in (writeIs ++ rest, j')
+        go env valToId idToHome (Op d op args:is) =
+          let args' = map (mapVar env idToHome) args
+              args'' = map (varToId env) args
+              (env', valToId', idToHome', writeIs) = maybeWrite d (LvnOp op args'') env valToId idToHome [Op d op args']
+              (rest, j') = go env' valToId' idToHome' is
+          in (writeIs ++ rest, j')
+        go env valToId idToHome (Call (Just d) f args:is) =
+          let args' = map (mapVar env idToHome) args
+              i = Map.size idToHome
+              (env', valToId', idToHome', writeIs) = write d (LvnCall i) env valToId idToHome
+              (rest, j') = go env' valToId' idToHome' is
+          in (writeIs ++ [Call (Just d) f args'] ++ rest, j')
+        go env valToId idToHome (Call Nothing f args:is) =
+          let args' = map (mapVar env idToHome) args
+              (rest, j') = go env valToId idToHome is
+          in (Call Nothing f args' : rest, j')
+        go env valToId idToHome (Effect op args:is) =
+          let args' = map (mapVar env idToHome) args
+              (rest, j') = go env valToId idToHome is
+          in (Effect op args' : rest, j')
+
+
 
