@@ -3,8 +3,11 @@ module Main where
 import Bril
 import CFG (buildCFG, wellFormedCFG)
 import Opt
+import Analysis
+import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.ByteString.Lazy as BSL
+import qualified Data.Map as Map
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Aeson.Decoding
@@ -52,9 +55,15 @@ main = do
   testJSONRoundTrip prog
   validateCFG prog
 
-  -- ...even though the actual task is to run optimizations
+  -- ...even though the actual task is to do an analysis
   let optimize = fromOptFunction . cfgDeadCodeElim . tdce . lvn . toOptFunction
-      optimizeProg (Program fs) = Program (map optimize fs)
+      _optimizeProg (Program fs) = Program (map optimize fs)
+      analyze = analyzeConstProp . toOptFunction
+      analyzeProg (Program fs) = for_ fs \f ->
+        for_ (Map.toList $ analyze f) \(lbl,(ins,outs)) -> do
+          putStrLn $ T.unpack lbl ++ " in: \t" ++ show ins
+          putStrLn $ T.unpack lbl ++ " out:\t" ++ show outs
 
-  BSL.putStr $ encode $ optimizeProg prog
-  putStrLn ""
+  analyzeProg prog
+  -- BSL.putStr $ encode $ optimizeProg prog
+  -- putStrLn ""

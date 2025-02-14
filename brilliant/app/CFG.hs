@@ -19,6 +19,12 @@ import Control.Monad
 data BB = BB Label [Label] [Instr] Jump
         deriving (Show, Eq)
 
+-- | The successors of a basic block
+successors :: BB -> [Label]
+successors (BB _ _ _ (Jmp l)) = [l]
+successors (BB _ _ _ (Br _ l1 l2)) = [l1, l2]
+successors (BB _ _ _ (Ret _)) = []
+
 instance Code BB where
   visit v (BB l ls is j) =
     BB <$> visitLabel v l <*> traverse (visitLabel v) ls <*> visit v is <*> visit v j

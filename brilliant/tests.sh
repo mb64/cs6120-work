@@ -1,8 +1,6 @@
 #!/bin/bash
 # Simple test: run the program on an input .bril file supplied in the command line
 
-cabal build
-
 one_test() {
   f="$1"
   basename="$(basename "$f")"
@@ -10,7 +8,7 @@ one_test() {
   echo "$basename"
   before=`mktemp`
   after=`mktemp`
-  diff -y <(cat "$f" | bril2json | brili -p $ARGS 2>$before ) <(cat "$f" | bril2json | cabal run | brili -p $ARGS 2>$after ) || echo "$basename: FAILED"
+  diff -y <(cat "$f" | bril2json | brili -p $ARGS 2>$before ) <(cat "$f" | bril2json | cabal run -v0 | brili -p $ARGS 2>$after ) || echo "$basename: FAILED"
   before_count=$(cat $before | sed -ne 's/total_dyn_inst: \(.*\)/\1/p')
   after_count=$(cat $after | sed -ne 's/total_dyn_inst: \(.*\)/\1/p')
   if [ $before_count -lt $after_count ] ; then

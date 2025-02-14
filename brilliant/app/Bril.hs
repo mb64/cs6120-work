@@ -27,6 +27,22 @@ destVar (Dest v _) = v
 
 data Lit = IntLit Int | BoolLit Bool deriving (Show, Eq, Ord)
 
+evalOp :: Op -> [Lit] -> Maybe Lit
+evalOp Add [IntLit x, IntLit y] = Just $ IntLit (x+y)
+evalOp Mul [IntLit x, IntLit y] = Just $ IntLit (x*y)
+evalOp Sub [IntLit x, IntLit y] = Just $ IntLit (x-y)
+evalOp Div [IntLit x, IntLit y] = if y == 0 then Nothing else Just $ IntLit (x `div` y)
+evalOp Eq [IntLit x, IntLit y] = Just $ BoolLit (x == y)
+evalOp Lt [IntLit x, IntLit y] = Just $ BoolLit (x < y)
+evalOp Gt [IntLit x, IntLit y] = Just $ BoolLit (x > y)
+evalOp Le [IntLit x, IntLit y] = Just $ BoolLit (x <= y)
+evalOp Ge [IntLit x, IntLit y] = Just $ BoolLit (x >= y)
+evalOp Not [BoolLit p] = Just $ BoolLit (not p)
+evalOp And [BoolLit p, BoolLit q] = Just $ BoolLit (p && q)
+evalOp Or [BoolLit p, BoolLit q] = Just $ BoolLit (p || q)
+evalOp Id [l] = Just l
+evalOp _ _ = Nothing
+
 data Instr
   = Constant Dest Lit
   | Op Dest Op [Var]
@@ -39,6 +55,12 @@ isPure (Constant _ _) = True
 isPure (Op _ _ _) = True
 isPure (Call _ _ _) = False
 isPure (Effect _ _) = False
+
+instrDest :: Instr -> Maybe Dest
+instrDest (Constant d _) = Just d
+instrDest (Op d _ _) = Just d
+instrDest (Call d _ _) = d
+instrDest (Effect _ _) = Nothing
 
 data Jump
   = Jmp Label
