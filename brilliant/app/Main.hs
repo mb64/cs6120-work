@@ -61,8 +61,8 @@ main = do
       analyze = analyzeConstProp . toOptFunction
       analyzeProg (Program fs) = for_ fs \f ->
         for_ (Map.toList $ analyze f) \(lbl,(ins,outs)) -> do
-          putStrLn $ T.unpack lbl ++ " in: \t" ++ show ins
-          putStrLn $ T.unpack lbl ++ " out:\t" ++ show outs
+          putStrLn $ T.unpack lbl ++ " in: \t" ++ prettyConstProp ins
+          putStrLn $ T.unpack lbl ++ " out:\t" ++ prettyConstProp outs
 
   analyzeProg prog
   -- BSL.putStr $ encode $ optimizeProg prog

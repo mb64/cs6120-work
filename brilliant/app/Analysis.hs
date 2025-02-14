@@ -10,6 +10,7 @@ import Data.Map.Merge.Strict qualified as Map
 import Data.Map.Strict (Map)
 import Data.List
 import Data.Maybe
+import Data.Text qualified as T
 
 -- | Dataflow analysis
 --
@@ -79,4 +80,11 @@ analyzeConstProp (OptFunction _ params _ startLabel bbs) =
   let init = PerVariable $ Map.fromList [(x,Top) | Dest x _ <- params]
   in forwardsAnalysis startLabel init bbs
 
+prettyConstProp :: PerVariable ConstLattice -> String
+prettyConstProp (PerVariable m) =
+    if Map.null m then "∅" else intercalate ", " [T.unpack v ++ ": " ++ pretty l | (v, l) <- Map.toList m]
+  where pretty Top = "?"
+        pretty (Value l) = prettyLit l
+        prettyLit (IntLit x) = show x
+        prettyLit (BoolLit b) = show b
 
