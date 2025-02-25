@@ -113,15 +113,11 @@ instance Dataflow Dominators where
 -- | Assumes all blocks are reachable
 buildDomFrontier :: Label -> Map Label BB -> Map Label (Set Label) -> Map Label (Set Label)
 buildDomFrontier start bbs doms = Map.fromListWith Set.union
-  [ (d, Set.singleton b) | (a,b) <- edges bbs, d <- Set.toList $ (doms Map.! a) Set.\\ (doms Map.! b) ]
+  [(d, Set.singleton b) | (a,b) <- edges bbs, d <- Set.toList $ (doms Map.! a) Set.\\ (doms Map.! b)]
 
 buildDomTree :: Label -> Map Label (Set Label) -> Tree Label
 buildDomTree start doms = go start
-  where a `dominates` b = a `Set.member` (doms Map.! b)
-        moreSpecific a b
-          | a `dominates` b = b
-          | b `dominates` a = a
-          | otherwise = error "neither is more specific"
+  where moreSpecific a b = if a `Set.member` (doms Map.! b) then b else a
         parent (b,ds) = case filter (/= b) $ Set.toList ds of
           [] -> Nothing
           x:xs -> Just (b, foldl' moreSpecific x xs)
@@ -131,19 +127,14 @@ buildDomTree start doms = go start
 dominatorTree :: Label -> Map Label BB -> Tree Label
 dominatorTree start bbs = buildDomTree start (dominators start bbs)
 
-domTreeOfOptFunction :: OptFunction -> Tree Label
-domTreeOfOptFunction (OptFunction _ _ _ start bbs) = dominatorTree start bbs
-
 -- | testing the dominators. slow
 domFnIsGood :: Label -> Map Label BB -> (Label -> Label -> Bool) -> Bool
 domFnIsGood start bbs claimedDom =
     and [claimedDom a b == dominates a b | a <- Map.keys bbs, b <- Map.keys bbs]
   where dominates a b = a == b || a == start || not (search (Set.singleton start) a b)
         -- is there a path from a to b not going through x?
-        search a x b | b `Set.member` a = True
-        search a x b =
-          let a' = a `Set.union` Set.fromList [s | b <- Set.toList a, s <- successors (bbs Map.! b), s /= x]
-          in a /= a' && search a' x b
+        search a x b = b `Set.member` a || (a /= a' && search a' x b)
+          where a' = a `Set.union` Set.fromList [s | b <- Set.toList a, s <- successors (bbs Map.! b), s /= x]
 
 dominatorsIsGood :: Label -> Map Label BB -> Map Label (Set Label) -> Bool
 dominatorsIsGood start bbs doms =
