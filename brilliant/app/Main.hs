@@ -8,11 +8,14 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Aeson.Decoding
+import Data.List
 import Control.Monad
 import Data.Foldable
+import Data.Tree (drawTree)
 
 loadJSON :: IO Program
 loadJSON = do
@@ -58,12 +61,25 @@ main = do
   -- ...even though the actual task is to do an analysis
   let optimize = fromOptFunction . cfgDeadCodeElim . tdce . lvn . toOptFunction
       _optimizeProg (Program fs) = Program (map optimize fs)
-      analyze = analyzeConstProp . toOptFunction
-      analyzeProg (Program fs) = for_ fs \f ->
-        for_ (Map.toList $ analyze f) \(lbl,(ins,outs)) -> do
+      _analyzeProg (Program fs) = for_ fs \f ->
+        for_ (Map.toList $ analyzeConstProp $ toOptFunction f) \(lbl,(ins,outs)) -> do
           putStrLn $ T.unpack lbl ++ " in: \t" ++ prettyConstProp ins
           putStrLn $ T.unpack lbl ++ " out:\t" ++ prettyConstProp outs
+      domTreesProg (Program fs) = for_ fs \f -> do
+        let OptFunction name _ _ start bbs = cfgDeadCodeElim $ toOptFunction f
+            doms = dominators start bbs
+            tree = dominatorTree start bbs
+        -- Print the dominator tree
+        putStrLn $ "For function " ++ T.unpack name ++ ":"
+        putStrLn $ drawTree $ fmap T.unpack tree
 
-  analyzeProg prog
+        -- Verify that the dominator computation is good
+        unless (domTreeIsGood start bbs tree) $ fail "dom tree bad!"
+        unless (dominatorsIsGood start bbs doms) $ fail "dominators bad!"
+
   -- BSL.putStr $ encode $ optimizeProg prog
   -- putStrLn ""
+
+  -- analyzeProg prog
+
+  domTreesProg prog

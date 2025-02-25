@@ -25,6 +25,10 @@ successors (BB _ _ _ (Jmp l)) = [l]
 successors (BB _ _ _ (Br _ l1 l2)) = [l1, l2]
 successors (BB _ _ _ (Ret _)) = []
 
+-- | The list of all edges in the CFG
+edges :: Map Label BB -> [(Label,Label)]
+edges bbs = [(l,s) | (l,bb) <- Map.toList bbs, s <- successors bb]
+
 instance Code BB where
   visit v (BB l ls is j) =
     BB <$> visitLabel v l <*> traverse (visitLabel v) ls <*> visit v is <*> visit v j
