@@ -23,17 +23,11 @@ import Control.Monad
 import Control.Applicative
 import Control.Monad.State
 
--- TODO:
--- * if the fn reassigns args, toCFG should rename vars vs args + add a header block
--- * split critical edges
--- * compute (ssa) var live range conficts
--- * (greedy?) ssa var coalescing
-
 getTypes :: Code a => a -> Map Var Type
 getTypes code = Map.fromListWith (\x y -> if x == y then x else error "types don't match")
   [(v, t) | Dest v t <- getConst $ visitDefs (Const . pure) code]
 
--- | To SSA by adding phis in the dominance frontier
+-- | To SSA, by adding phis in the dominance frontier
 toSSA :: OptFunction -> OptFunction
 toSSA (OptFunction name params retTy start bbs) =
     OptFunction name params retTy start (fmap (\(_,bb,_) -> bb) result)
@@ -42,20 +36,20 @@ toSSA (OptFunction name params retTy start bbs) =
     doms = dominators start bbs
     domFrontier = buildDomFrontier start bbs doms
     df s = Set.unions [fromMaybe Set.empty $ Map.lookup l domFrontier | l <- Set.toList s]
-
+    types = getTypes bbs
     live = let m = liveVars start bbs in \l v -> v `Set.member` (m ! l)
 
-    initialDefs :: [(Var, Set Label)]
-    initialDefs = Map.toList $ Map.fromListWith Set.union
-      [(v,Set.singleton l) | (l,bb) <- Map.toList bbs, v <- Set.toList $ varDefs bb]
-
-    types = getTypes bbs
-
+    -- figure out which phis to add where
     phis :: Map Label [Var]
     phis = Map.fromListWith (++)
       [(l, [v]) | (v, init) <- initialDefs, l <- Set.toList $ semiNaive (df init) (const df), live l v]
       `Map.union` fmap (const []) bbs
 
+    initialDefs :: [(Var, Set Label)]
+    initialDefs = Map.toList $ Map.fromListWith Set.union
+      [(v,Set.singleton l) | (l,bb) <- Map.toList bbs, v <- Set.toList $ varDefs bb]
+
+    -- update the code
     fresh :: Var -> State Int Var
     fresh v = state \s -> (v <> "." <> T.pack (show s), s+1)
 
@@ -87,6 +81,8 @@ toSSA (OptFunction name params retTy start bbs) =
       pure (phiEnv, BB l ls (gets ++ is' ++ sets) t', env')
 
 -- | Stupid and simple, because I didn't have time to implement a better one
+--
+-- Ideally I would be doing some coalescing
 fromSSA :: OptFunction -> OptFunction
 fromSSA (OptFunction name params retTy start bbs) =
     OptFunction name params retTy start (fmap bb bbs)
@@ -95,6 +91,4 @@ fromSSA (OptFunction name params retTy start bbs) =
         inst (Effect Set [v,v']) = Op (Dest (v <> ".shadow") (types ! v')) Id [v']
         inst x = x
         types = getTypes bbs
-
-
 
