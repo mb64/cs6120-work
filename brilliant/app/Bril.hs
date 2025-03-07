@@ -14,7 +14,7 @@ import Control.Applicative hiding (Const(..))
 
 data Type = Int | Bool deriving (Show, Eq, Ord)
 data Op = Add | Mul | Sub | Div | Eq | Lt | Gt | Le | Ge | Not | And | Or
-        | Id | Nop | Print
+        | Id | Nop | Print | Get | Set
         deriving (Show, Eq, Ord)
 
 type Label = Text
@@ -183,6 +183,8 @@ instance FromJSON Op where
     "id" -> pure Id 
     "nop" -> pure Nop 
     "print" -> pure Print
+    "get" -> pure Get
+    "set" -> pure Set
     _ -> fail "bad op"
 
 instance FromJSON Lit where

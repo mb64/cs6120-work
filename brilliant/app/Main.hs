@@ -4,6 +4,7 @@ import Bril
 import CFG (buildCFG, wellFormedCFG)
 import Opt
 import Analysis
+import SSA
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.ByteString.Lazy as BSL
@@ -59,13 +60,17 @@ main = do
   validateCFG prog
 
   -- ...even though the actual task is to do an analysis
-  let optimize = fromOptFunction . cfgDeadCodeElim . tdce . lvn . toOptFunction
-      _optimizeProg (Program fs) = Program (map optimize fs)
-      _analyzeProg (Program fs) = for_ fs \f ->
-        for_ (Map.toList $ analyzeConstProp $ toOptFunction f) \(lbl,(ins,outs)) -> do
+  let optimize = fromOptFunction . toSSA . cfgDeadCodeElim . tdce . lvn . toOptFunction
+      optimizeProg (Program fs) = Program (map optimize fs)
+      analyzeProg (Program fs) = for_ fs \f -> do
+        let f'@(OptFunction name _ _ start bbs) = cfgDeadCodeElim $ toOptFunction f
+        putStrLn $ "For function " ++ T.unpack name ++ ":"
+        for_ (Map.toList $ analyzeConstProp f') \(lbl,(ins,outs)) -> do
           putStrLn $ T.unpack lbl ++ " in: \t" ++ prettyConstProp ins
           putStrLn $ T.unpack lbl ++ " out:\t" ++ prettyConstProp outs
-      domTreesProg (Program fs) = for_ fs \f -> do
+        for_ (Map.toList $ liveVars start bbs) \(lbl,vs) ->
+          putStrLn $ T.unpack lbl ++ " live:\t" ++ intercalate ", " (map T.unpack (Set.toList vs))
+      _domTreesProg (Program fs) = for_ fs \f -> do
         let OptFunction name _ _ start bbs = cfgDeadCodeElim $ toOptFunction f
             doms = dominators start bbs
             tree = dominatorTree start bbs
@@ -80,6 +85,6 @@ main = do
   -- BSL.putStr $ encode $ optimizeProg prog
   -- putStrLn ""
 
-  -- analyzeProg prog
+  analyzeProg prog
 
-  domTreesProg prog
+  -- domTreesProg prog
