@@ -29,6 +29,10 @@ import Control.Monad.State
 -- * compute (ssa) var live range conficts
 -- * (greedy?) ssa var coalescing
 
+getTypes :: Code a => a -> Map Var Type
+getTypes code = Map.fromListWith (\x y -> if x == y then x else error "types don't match")
+  [(v, t) | Dest v t <- getConst $ visitDefs (Const . pure) code]
+
 -- | To SSA by adding phis in the dominance frontier
 toSSA :: OptFunction -> OptFunction
 toSSA (OptFunction name params retTy start bbs) =
@@ -45,9 +49,7 @@ toSSA (OptFunction name params retTy start bbs) =
     initialDefs = Map.toList $ Map.fromListWith Set.union
       [(v,Set.singleton l) | (l,bb) <- Map.toList bbs, v <- Set.toList $ varDefs bb]
 
-    types :: Map Var Type
-    types = Map.fromListWith (\x y -> if x == y then x else error "types don't match")
-      [(v, t) | Dest v t <- getConst $ visitDefs (Const . pure) bbs]
+    types = getTypes bbs
 
     phis :: Map Label [Var]
     phis = Map.fromListWith (++)
@@ -83,6 +85,16 @@ toSSA (OptFunction name params retTy start bbs) =
             | s <- successors bb, v <- phis ! s, let (phiE, _, _) = result ! s]
 
       pure (phiEnv, BB l ls (gets ++ is' ++ sets) t', env')
+
+-- | Stupid and simple, because I didn't have time to implement a better one
+fromSSA :: OptFunction -> OptFunction
+fromSSA (OptFunction name params retTy start bbs) =
+    OptFunction name params retTy start (fmap bb bbs)
+  where bb (BB l ls is t) = BB l ls (map inst is) t
+        inst (Op (Dest v t) Get _) = Op (Dest v t) Id [v <> ".shadow"]
+        inst (Effect Set [v,v']) = Op (Dest (v <> ".shadow") (types ! v')) Id [v']
+        inst x = x
+        types = getTypes bbs
 
 
 
