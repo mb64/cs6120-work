@@ -5,6 +5,7 @@ module Analysis where
 import Bril
 import Opt
 import CFG (BB(..), successors, edges)
+import Util
 import Data.Map.Strict qualified as Map
 import Data.Map.Merge.Strict qualified as Map
 import Data.Map.Strict (Map)
@@ -104,11 +105,11 @@ forwardsAnalysis :: Dataflow a => Label -> a -> Map Label BB -> Map Label (a,a)
 forwardsAnalysis start entryValue bbs = semiNaive init f
   where
     preds = Map.fromListWith (++) [(b,[a]) | (a,b) <- edges bbs]
-    init = Map.singleton start (entryValue, transfer (bbs Map.! start) entryValue)
+    init = Map.singleton start (entryValue, transfer (bbs ! start) entryValue)
     f m diff = Map.fromList
-      [ (s, (v, transfer (bbs Map.! s) v))
-      | (l,_) <- Map.toList diff, s <- successors (bbs Map.! l)
-      , let v = foldl1' merge [snd (m Map.! p) | p <- preds Map.! s] ]
+      [ (s, (v, transfer (bbs ! s) v))
+      | (l,_) <- Map.toList diff, s <- successors (bbs ! l)
+      , let v = foldl1' merge [snd (m ! p) | p <- preds ! s] ]
 
 -- | Constant propagation
 data ConstLattice = Value Lit | Top deriving (Show, Eq, Ord)
@@ -152,16 +153,16 @@ liveVars start bbs = semiNaive (usedVarsBB <$> bbs) f
         defs = fmap varDefs bbs
         -- TODO: if this infinite loops, fix it
         f _ diff = Map.fromList
-          [(p, vars Set.\\ (defs Map.! p)) | (l, vars) <- Map.toList diff, p <- fromMaybe [] $ Map.lookup l preds]
+          [(p, vars Set.\\ (defs ! p)) | (l, vars) <- Map.toList diff, p <- fromMaybe [] $ Map.lookup l preds]
 
 -- | Compute all dominators using data flow
 dominators :: Label -> Map Label BB -> Map Label (Set Label)
 dominators start bbs =
-    getDom <$> semiNaive (Map.singleton start (Dom Set.empty)) f
+    getDom <$> semiNaive (Map.singleton start (Dom (Set.singleton start))) f
   where preds = Map.fromListWith (++) [(b,[a]) | (a,b) <- edges bbs]
         f m diff = Map.fromList
-          [ (l, Dom $ Set.insert l $ foldl1' Set.intersection [getDom (m Map.! p) | p <- preds Map.! l])
-          | (b,_) <- Map.toList diff, l <- successors (bbs Map.! b) ]
+          [ (l, Dom $ Set.insert l $ foldl1' Set.intersection [getDom (m ! p) | p <- preds ! l, Map.member p m])
+          | (b,_) <- Map.toList diff, l <- successors (bbs ! b) ]
 
 newtype Dominators = Dom { getDom :: Set Label } deriving (Show, Eq, Ord)
 instance Lattice Dominators where
@@ -172,18 +173,18 @@ instance Datalog Dominators where
 -- | Assumes all blocks are reachable
 buildDomFrontier :: Label -> Map Label BB -> Map Label (Set Label) -> Map Label (Set Label)
 buildDomFrontier start bbs doms = Map.fromListWith Set.union
-  [(d, Set.singleton b) | (a,b) <- edges bbs, d <- Set.toList $ (doms Map.! a) Set.\\ (doms Map.! b)]
+  [(d, Set.singleton b) | (a,b) <- edges bbs, d <- Set.toList $ (doms ! a) Set.\\ (doms ! b)]
 
 domTreeParent :: Map Label (Set Label) -> Label -> Maybe Label
-domTreeParent doms l = case filter (/= l) $ Set.toList (doms Map.! l) of
+domTreeParent doms l = case filter (/= l) $ Set.toList (doms ! l) of
     [] -> Nothing
     x:xs -> Just (foldl' moreSpecific x xs)
-  where moreSpecific a b = if a `Set.member` (doms Map.! b) then b else a
+  where moreSpecific a b = if a `Set.member` (doms ! b) then b else a
 
 -- TODO clean up
 buildDomTree :: Label -> Map Label (Set Label) -> Tree Label
 buildDomTree start doms = go start
-  where moreSpecific a b = if a `Set.member` (doms Map.! b) then b else a
+  where moreSpecific a b = if a `Set.member` (doms ! b) then b else a
         parent (b,ds) = case filter (/= b) $ Set.toList ds of
           [] -> Nothing
           x:xs -> Just (b, foldl' moreSpecific x xs)
@@ -200,11 +201,11 @@ domFnIsGood start bbs claimedDom =
   where dominates a b = a == b || a == start || not (search (Set.singleton start) a b)
         -- is there a path from a to b not going through x?
         search a x b = b `Set.member` a || (a /= a' && search a' x b)
-          where a' = a `Set.union` Set.fromList [s | b <- Set.toList a, s <- successors (bbs Map.! b), s /= x]
+          where a' = a `Set.union` Set.fromList [s | b <- Set.toList a, s <- successors (bbs ! b), s /= x]
 
 dominatorsIsGood :: Label -> Map Label BB -> Map Label (Set Label) -> Bool
 dominatorsIsGood start bbs doms =
-  domFnIsGood start bbs (\a b -> a `Set.member` (doms Map.! b))
+  domFnIsGood start bbs (\a b -> a `Set.member` (doms ! b))
 
 domTreeIsGood :: Label -> Map Label BB -> Tree Label -> Bool
 domTreeIsGood start bbs tree =

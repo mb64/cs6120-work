@@ -60,7 +60,7 @@ main = do
   validateCFG prog
 
   -- ...even though the actual task is to do an analysis
-  let optimize = fromOptFunction . toSSA . cfgDeadCodeElim . tdce . lvn . toOptFunction
+  let optimize = fromOptFunction . toSSA . cfgDeadCodeElim . toOptFunction
       optimizeProg (Program fs) = Program (map optimize fs)
       analyzeProg (Program fs) = for_ fs \f -> do
         let f'@(OptFunction name _ _ start bbs) = cfgDeadCodeElim $ toOptFunction f
@@ -70,7 +70,7 @@ main = do
           putStrLn $ T.unpack lbl ++ " out:\t" ++ prettyConstProp outs
         for_ (Map.toList $ liveVars start bbs) \(lbl,vs) ->
           putStrLn $ T.unpack lbl ++ " live:\t" ++ intercalate ", " (map T.unpack (Set.toList vs))
-      _domTreesProg (Program fs) = for_ fs \f -> do
+      domTreesProg (Program fs) = for_ fs \f -> do
         let OptFunction name _ _ start bbs = cfgDeadCodeElim $ toOptFunction f
             doms = dominators start bbs
             tree = dominatorTree start bbs
@@ -82,9 +82,10 @@ main = do
         unless (domTreeIsGood start bbs tree) $ fail "dom tree bad!"
         unless (dominatorsIsGood start bbs doms) $ fail "dominators bad!"
 
-  -- BSL.putStr $ encode $ optimizeProg prog
-  -- putStrLn ""
-
-  analyzeProg prog
-
   -- domTreesProg prog
+
+  BSL.putStr $ encode $ optimizeProg prog
+  putStrLn ""
+
+  -- analyzeProg prog
+

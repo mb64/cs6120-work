@@ -21,7 +21,7 @@ import Control.Monad.State
 data OptFunction =
   OptFunction
     Text -- ^ Name
-    [Dest] -- ^ Parameters
+    [Dest] -- ^ Parameters. They're disjoint from used vars
     (Maybe Type) -- ^ Return type
     Label -- ^ Start label
     (Map Label BB) -- ^ All basic blocks
@@ -34,9 +34,10 @@ instance Code OptFunction where
 toOptFunction :: Function -> OptFunction
 toOptFunction (Function name params out code) =
   let -- rename vars
-      visitor = visitVars (\v -> pure ("v_" <> v))
-      params' = runIdentity $ visit visitor params
-      code' = runIdentity $ visit visitor code
+      rename prefix = visitVars (\v -> pure (prefix <> v))
+      params' = runIdentity $ visit (rename "p_") params
+      renamings = [Instr (Op (Dest ("v_" <> v) t) Id ["p_" <> v]) | Dest v t <- params]
+      code' = renamings ++ (runIdentity $ visit (rename "v_") code)
 
       -- build CFG
       CFG start _ bbs = canonicalizeJumpsCFG $ buildCFG code'
