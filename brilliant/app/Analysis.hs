@@ -109,7 +109,7 @@ forwardsAnalysis start entryValue bbs = semiNaive init f
     f m diff = Map.fromList
       [ (s, (v, transfer (bbs ! s) v))
       | (l,_) <- Map.toList diff, s <- successors (bbs ! l)
-      , let v = foldl1' merge [snd (m ! p) | p <- preds ! s] ]
+      , let v = foldl1' merge [snd (m ! p) | p <- preds ! s, Map.member p m] ]
 
 -- | Constant propagation
 data ConstLattice = Value Lit | Top deriving (Show, Eq, Ord)
@@ -152,7 +152,7 @@ liveVars start bbs = semiNaive (usedVarsBB <$> bbs) f
   where preds = Map.fromListWith (++) [(b,[a]) | (a,b) <- edges bbs]
         defs = fmap varDefs bbs
         -- TODO: if this infinite loops, fix it
-        f _ diff = Map.fromList
+        f _ diff = Map.fromListWith merge
           [(p, vars Set.\\ (defs ! p)) | (l, vars) <- Map.toList diff, p <- fromMaybe [] $ Map.lookup l preds]
 
 -- | Compute all dominators using data flow
@@ -173,7 +173,7 @@ instance Datalog Dominators where
 -- | Assumes all blocks are reachable
 buildDomFrontier :: Label -> Map Label BB -> Map Label (Set Label) -> Map Label (Set Label)
 buildDomFrontier start bbs doms = Map.fromListWith Set.union
-  [(d, Set.singleton b) | (a,b) <- edges bbs, d <- Set.toList $ (doms ! a) Set.\\ (doms ! b)]
+  [(d, Set.singleton b) | (a,b) <- edges bbs, d <- Set.toList (doms ! a), b == d || not (d `Set.member` (doms ! b))]
 
 domTreeParent :: Map Label (Set Label) -> Label -> Maybe Label
 domTreeParent doms l = case filter (/= l) $ Set.toList (doms ! l) of
@@ -190,9 +190,6 @@ buildDomTree start doms = go start
           x:xs -> Just (b, foldl' moreSpecific x xs)
         children = Map.fromListWith (++) [(p, [b]) | Just (b, p) <- parent <$> Map.toList doms]
         go a = Node a [go b | b <- fromMaybe [] $ Map.lookup a children, b /= a]
-
-dominatorTree :: Label -> Map Label BB -> Tree Label
-dominatorTree start bbs = buildDomTree start (dominators start bbs)
 
 -- | testing the dominators. slow
 domFnIsGood :: Label -> Map Label BB -> (Label -> Label -> Bool) -> Bool

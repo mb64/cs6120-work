@@ -73,19 +73,23 @@ main = do
       domTreesProg (Program fs) = for_ fs \f -> do
         let OptFunction name _ _ start bbs = cfgDeadCodeElim $ toOptFunction f
             doms = dominators start bbs
-            tree = dominatorTree start bbs
+            tree = buildDomTree start doms
+            frontier = buildDomFrontier start bbs doms
         -- Print the dominator tree
         putStrLn $ "For function " ++ T.unpack name ++ ":"
         putStrLn $ drawTree $ fmap T.unpack tree
+        -- Print the dominance frontier
+        for_ (Map.toList frontier) \(l,f) ->
+          putStrLn $ T.unpack l ++ " frontier: " ++ show f
 
         -- Verify that the dominator computation is good
         unless (domTreeIsGood start bbs tree) $ fail "dom tree bad!"
         unless (dominatorsIsGood start bbs doms) $ fail "dominators bad!"
 
   -- domTreesProg prog
+  -- analyzeProg prog
 
   BSL.putStr $ encode $ optimizeProg prog
   putStrLn ""
 
-  -- analyzeProg prog
 

@@ -79,10 +79,10 @@ toSSA (OptFunction name params retTy start bbs) =
       -- make the phis
       let gets = [Op (Dest (phiEnv ! v) (types ! v)) Get [] | v <- phis ! l]
           sets =
-            [ Effect Set [end ! v, env' ! v]
-            | s <- successors bb, v <- phis ! s, let (_, _, end) = result ! s]
+            [ Effect Set [phiE ! v, env' ! v]
+            | s <- successors bb, v <- phis ! s, let (phiE, _, _) = result ! s]
 
-      pure (env, BB l ls (gets ++ is' ++ sets) t', env')
+      pure (phiEnv, BB l ls (gets ++ is' ++ sets) t', env')
 
 
 
