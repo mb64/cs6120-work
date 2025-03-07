@@ -23,9 +23,9 @@ import Control.Monad
 import Control.Applicative
 import Control.Monad.State
 
-getTypes :: Code a => a -> Map Var Type
-getTypes code = Map.fromListWith (\x y -> if x == y then x else error "types don't match")
-  [(v, t) | Dest v t <- getConst $ visitDefs (Const . pure) code]
+getTypes :: Code a => [Dest] -> a -> Map Var Type
+getTypes params code = Map.fromListWith (\x y -> if x == y then x else error "types don't match")
+  [(v, t) | Dest v t <- params ++ (getConst $ visitDefs (Const . pure) code)]
 
 -- | To SSA, by adding phis in the dominance frontier
 toSSA :: OptFunction -> OptFunction
@@ -36,7 +36,7 @@ toSSA (OptFunction name params retTy start bbs) =
     doms = dominators start bbs
     domFrontier = buildDomFrontier start bbs doms
     df s = Set.unions [fromMaybe Set.empty $ Map.lookup l domFrontier | l <- Set.toList s]
-    types = getTypes bbs
+    types = getTypes params bbs
     live = let m = liveVars start bbs in \l v -> v `Set.member` (m ! l)
 
     -- figure out which phis to add where
@@ -90,5 +90,18 @@ fromSSA (OptFunction name params retTy start bbs) =
         inst (Op (Dest v t) Get _) = Op (Dest v t) Id [v <> ".shadow"]
         inst (Effect Set [v,v']) = Op (Dest (v <> ".shadow") (types ! v')) Id [v']
         inst x = x
-        types = getTypes bbs
+        types = getTypes params bbs
+
+-- | Copy propagation. Only run it on SSA form!
+ssaCopyPropagate :: OptFunction -> OptFunction
+ssaCopyPropagate (OptFunction name params retTy start bbs) =
+    OptFunction name params retTy start (process <$> bbs)
+  where values = Map.fromListWith (error "not SSA")
+          [(v,v') | (_,BB _ _ is _) <- Map.toList bbs, Op (Dest v _) Id [v'] <- is]
+        find v | v `Map.member` values = find (values ! v)
+               | otherwise = v
+        isNotCopy (Op _ Id _) = False
+        isNotCopy _ = True
+        process (BB l ls is t) =
+          mapUses find $ BB l ls (filter isNotCopy is) t
 

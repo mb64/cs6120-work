@@ -60,7 +60,7 @@ main = do
   validateCFG prog
 
   -- ...even though the actual task is to do an analysis
-  let optimize = fromOptFunction . fromSSA . toSSA . cfgDeadCodeElim . toOptFunction
+  let optimize = fromOptFunction . fromSSA . ssaCopyPropagate . toSSA . cfgDeadCodeElim . toOptFunction
       optimizeProg (Program fs) = Program (map optimize fs)
       analyzeProg (Program fs) = for_ fs \f -> do
         let f'@(OptFunction name _ _ start bbs) = cfgDeadCodeElim $ toOptFunction f
