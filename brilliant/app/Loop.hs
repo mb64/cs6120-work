@@ -99,27 +99,6 @@ loopsToBBs loopy = Map.fromListWith (error "duplicates") $ goMap loopy []
     goNode l (Loop ph l' h m) rest = (l,ph) : (l',h) : goMap m rest
     goNode l (NonLoop b) rest = (l,b) : rest
 
--- | Merge basic blocks. This wasn't so useful before, but it is now for
--- post-processing loop stuff, since I'm adding pre-headers.
-mergeBlocks :: Label -> Map Label BB -> Map Label BB
-mergeBlocks start bbs = Map.fromList
-    [(l,lengthen bb) | (l,bb) <- Map.toList bbs, not $ willGetMerged l]
-  where
-    preds = Map.fromListWith (++) [(b,[a]) | (a,b) <- edges bbs]
-    hasUniquePred b = b /= start && length (preds ! b) == 1
-    willGetMerged b = b /= start && case preds ! b of
-      [p] -> length (successors (bbs ! p)) == 1
-      _ -> False
-
-    lengthen bb = case successors bb of
-      [s] | hasUniquePred s -> lengthen (mergeBBs bb (bbs ! s))
-      _ -> bb
-
-    mergeBBs (BB l _ is _) (BB _ _ is' t) =
-      let (g, i, s) = splitPhisBB is
-          (g', i', s') = splitPhisBB is'
-      in BB l [] (g ++ g' ++ i ++ i' ++ s ++ s') t
-
 -- | Reverse dominators
 --
 -- If something's not included, it's because it statically can't reach any exit
@@ -146,7 +125,7 @@ scheduleInstrs instrs = go instrs []
 -- | LICM whole thing
 licmOptFunction :: OptFunction -> OptFunction
 licmOptFunction (OptFunction name params retTy start bbs) =
-    OptFunction name params retTy start (mergeBlocks start bbs')
+    OptFunction name params retTy start bbs'
   where loopy = buildLoopTree start bbs
         loopy' = loopInvariantCodeMotion start loopy
         bbs' = loopsToBBs loopy'

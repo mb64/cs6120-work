@@ -18,6 +18,7 @@ import Data.List
 import Control.Monad
 import Data.Foldable
 import Data.Tree (drawTree)
+import System.Environment (getArgs)
 
 loadJSON :: IO Program
 loadJSON = do
@@ -60,25 +61,29 @@ main = do
   testJSONRoundTrip prog
   validateCFG prog
 
+  licm <- getArgs >>= \case
+    ["--licm"] -> return licmOptFunction
+    _ -> return id
+
   -- ...even though the actual task is to do an analysis
   let optimize = fromOptFunction
+        . cleanUpCFG
         . fromSSA
-        . licmOptFunction
+        . cleanUpCFG
+        . licm
         . ssaCopyPropagate
         . toSSA
-        . cfgDeadCodeElim
+        . cleanUpCFG
         . toOptFunction
       optimizeProg (Program fs) = Program (map optimize fs)
       analyzeProg (Program fs) = for_ fs \f -> do
-        let f'@(OptFunction name _ _ start bbs) = toSSA . cfgDeadCodeElim $ toOptFunction f
+        let f'@(OptFunction name _ _ start bbs) = cfgDeadCodeElim $ toOptFunction f
         putStrLn $ "For function " ++ T.unpack name ++ ":"
-        for_ (Map.toList $ buildLoopTree start bbs) \(l,n) ->
-          putStrLn $ T.unpack l ++ ":\n" ++ show n
-        -- for_ (Map.toList $ analyzeConstProp f') \(lbl,(ins,outs)) -> do
-        --   putStrLn $ T.unpack lbl ++ " in: \t" ++ prettyConstProp ins
-        --   putStrLn $ T.unpack lbl ++ " out:\t" ++ prettyConstProp outs
-        -- for_ (Map.toList $ liveVars start bbs) \(lbl,vs) ->
-        --   putStrLn $ T.unpack lbl ++ " live:\t" ++ intercalate ", " (map T.unpack (Set.toList vs))
+        for_ (Map.toList $ analyzeConstProp f') \(lbl,(ins,outs)) -> do
+          putStrLn $ T.unpack lbl ++ " in: \t" ++ prettyConstProp ins
+          putStrLn $ T.unpack lbl ++ " out:\t" ++ prettyConstProp outs
+        for_ (Map.toList $ liveVars start bbs) \(lbl,vs) ->
+          putStrLn $ T.unpack lbl ++ " live:\t" ++ intercalate ", " (map T.unpack (Set.toList vs))
       domTreesProg (Program fs) = for_ fs \f -> do
         let OptFunction name _ _ start bbs = cfgDeadCodeElim $ toOptFunction f
             doms = dominators start bbs
