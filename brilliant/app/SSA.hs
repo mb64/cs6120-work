@@ -105,3 +105,31 @@ ssaCopyPropagate (OptFunction name params retTy start bbs) =
         process (BB l ls is t) =
           mapUses find $ BB l ls (filter isNotCopy is) t
 
+-- | Split into gets, normal instructions, and sets
+splitPhisBB :: [Instr] -> ([Instr], [Instr], [Instr])
+splitPhisBB = foldMap f
+  where f i@(Op _ Get _) = ([i], [], [])
+        f i@(Effect Set _) = ([], [], [i])
+        f i = ([], [i], [])
+
+-- | The defining block of all variables
+--
+-- This is well-defined when you're in SSA since there's only one def
+definingBlocks :: Map Label BB -> Map Var Label
+definingBlocks bbs = Map.fromListWith (error "not in SSA!")
+  [(v, l) | (l, BB _ _ is _) <- Map.toList bbs, v <- Set.toList $ varDefs is]
+
+-- -- | SCCP + DCE. Only run it on SSA form!
+-- ssaSimpl :: OptFunction -> OptFunction
+-- ssaSimpl = ssaDataDCE . undefined
+
+-- -- | Dataflow DCE. Only run it on SSA form!
+-- ssaDataDCE :: OptFunction -> OptFunction
+-- ssaDataDCE (OptFunction name params retTy start bbs) =
+--     OptFunction name params retTy start (process <$> bbs)
+--   where deps = ...
+--         uses = Set.unions [ usedVars t `Set.union` usesInst | BB _ _ is t <- toList bbs]
+--         usesInst 
+
+
+

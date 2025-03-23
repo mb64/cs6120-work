@@ -1,0 +1,15 @@
+@main(arg: int) {
+  # cube it using a loop
+  iter: int = const 0;
+  total: int = const 0;
+.loop:
+  square: int = mul arg arg;
+  total: int = add total square;
+  one: int = const 1;
+  iter: int = add iter one;
+  cont: bool = lt iter arg;
+  br cont .loop .exit;
+.exit:
+  print total;
+}
+  

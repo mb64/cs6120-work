@@ -36,6 +36,9 @@ instance (Ord k, Lattice a) => Lattice (Map k a) where
   merge =
     Map.merge Map.preserveMissing Map.preserveMissing (Map.zipWithMatched (\_ x y -> merge x y))
 
+instance Ord a => Lattice (Min a) where merge = (<>)
+instance Ord a => Lattice (Max a) where merge = (<>)
+
 class Lattice a => Pointed a where
   empty :: a
   isEmpty :: a -> Bool
@@ -51,6 +54,13 @@ instance (Pointed a, Pointed b) => Pointed (a, b) where
 instance (Ord k, Lattice a) => Pointed (Map k a) where
   empty = Map.empty
   isEmpty = Map.null
+
+instance (Ord a, Bounded a) => Pointed (Min a) where
+  empty = maxBound
+  isEmpty = (== empty)
+instance (Ord a, Bounded a) => Pointed (Max a) where
+  empty = minBound
+  isEmpty = (== empty)
 
 checkEmpty :: Pointed a => a -> Maybe a
 checkEmpty x = if isEmpty x then Nothing else Just x
@@ -88,6 +98,11 @@ instance (Datalog a, Pointed a, Datalog b, Pointed b) => Datalog (a, b) where
     (Just c, Nothing) -> Just (c, empty)
     (Nothing, Just z) -> Just (empty, z)
     (Nothing, Nothing) -> Nothing
+
+instance Ord a => Datalog (Min a) where
+  x `without` y = if x == y then Nothing else Just x
+instance Ord a => Datalog (Max a) where
+  x `without` y = if x == y then Nothing else Just x
 
 -- | Dataflow analysis
 --
@@ -151,7 +166,6 @@ liveVars :: Label -> Map Label BB -> Map Label (Set Var)
 liveVars start bbs = semiNaive (usedVarsBB <$> bbs) f
   where preds = Map.fromListWith (++) [(b,[a]) | (a,b) <- edges bbs]
         defs = fmap varDefs bbs
-        -- TODO: if this infinite loops, fix it
         f _ diff = Map.fromListWith merge
           [(p, vars Set.\\ (defs ! p)) | (l, vars) <- Map.toList diff, p <- fromMaybe [] $ Map.lookup l preds]
 
@@ -181,15 +195,14 @@ domTreeParent doms l = case filter (/= l) $ Set.toList (doms ! l) of
     x:xs -> Just (foldl' moreSpecific x xs)
   where moreSpecific a b = if a `Set.member` (doms ! b) then b else a
 
--- TODO clean up
 buildDomTree :: Label -> Map Label (Set Label) -> Tree Label
 buildDomTree start doms = go start
-  where moreSpecific a b = if a `Set.member` (doms ! b) then b else a
-        parent (b,ds) = case filter (/= b) $ Set.toList ds of
-          [] -> Nothing
-          x:xs -> Just (b, foldl' moreSpecific x xs)
+  where parent (l,_) = (l,) <$> domTreeParent doms l
         children = Map.fromListWith (++) [(p, [b]) | Just (b, p) <- parent <$> Map.toList doms]
         go a = Node a [go b | b <- fromMaybe [] $ Map.lookup a children, b /= a]
+
+-- TODO: some nice structure with precomputed info and convenient accessors for
+-- all the stuff I wanna know (dominance queries, dom tree, predecessors, etc)
 
 -- | testing the dominators. slow
 domFnIsGood :: Label -> Map Label BB -> (Label -> Label -> Bool) -> Bool

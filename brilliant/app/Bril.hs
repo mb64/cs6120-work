@@ -52,6 +52,7 @@ data Instr
 
 isPure :: Instr -> Bool
 isPure (Constant _ _) = True
+isPure (Op _ Get _) = False -- I don't trust this
 isPure (Op _ _ _) = True
 isPure (Call _ _ _) = False
 isPure (Effect _ _) = False

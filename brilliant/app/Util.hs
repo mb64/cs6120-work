@@ -1,5 +1,6 @@
 module Util where
 
+import Data.Tuple
 import Data.Map qualified as Map
 import Data.Map (Map)
 import Debug.Trace (trace)
@@ -12,4 +13,7 @@ m ! k = case Map.lookup k m of
 
 debug :: Show a => String -> a -> b -> b
 debug msg x y = trace (msg ++ ": " ++ show x) y
+
+getSolo :: Solo a -> a
+getSolo (Solo a) = a
 

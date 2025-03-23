@@ -39,8 +39,11 @@ toOptFunction (Function name params out code) =
       renamings = [Instr (Op (Dest ("v_" <> v) t) Id ["p_" <> v]) | Dest v t <- params]
       code' = renamings ++ (runIdentity $ visit (rename "v_") code)
 
+      -- rename labels
+      code'' = runIdentity $ visit (defaultVisitor { visitLabel = \v -> pure ("l_" <> v) }) code'
+
       -- build CFG
-      CFG start _ bbs = canonicalizeJumpsCFG $ buildCFG code'
+      CFG start _ bbs = canonicalizeJumpsCFG $ buildCFG code''
 
   in OptFunction name params' out start bbs
 
