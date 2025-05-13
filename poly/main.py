@@ -21,17 +21,13 @@ def main() -> None:
             cmd = relooper.to_structured_control_flow(cfg)
             if debug: cmd.debug()
 
-            try:
-                s = static.command_to_static(cmd)
-                if debug: s.debug()
+            s = static.command_to_static(cmd)
+            if debug: s.debug()
 
-                cmd2 = s.to_structured()
-                if debug: cmd2.debug()
-            except Unhandled as e:
-                if debug:
-                    print(traceback.format_exc(), file=sys.stderr)
+            cmd2 = s.to_structured()
+            if debug: cmd2.debug()
 
-            func2 = cmd.codegen()
+            func2 = cmd2.codegen()
             # cfg2 = bril.function_to_cfg(func2)
             # if debug: cfg2.debug()
         except Unhandled as e:

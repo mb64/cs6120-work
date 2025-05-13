@@ -86,10 +86,10 @@ class Codegen:
         return result
 
     def set(self, s: isl.Set) -> str:
-        return self.or_(self.basic_set(bs) for bs in s.get_basic_sets())
+        return self.or_(*(self.basic_set(bs) for bs in s.get_basic_sets()))
 
     def basic_set(self, bs: isl.BasicSet) -> str:
-        return self.and_(self.constraint(c) for c in bs.get_constraints())
+        return self.and_(*(self.constraint(c) for c in bs.get_constraints()))
 
     def constraint(self, c: isl.Constraint) -> str:
         value = self.aff(c.get_aff())
