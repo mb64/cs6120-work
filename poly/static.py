@@ -369,10 +369,9 @@ def more_recent(l1: str, l2: str, stack: list[str]) -> bool:
 def make_branch_simple(condition: isl.Set, true: Simple, false: Simple) -> Simple:
     # Merge two simple things with the same destination
     assert true.dest == false.dest
-    assert set(true.env.keys()) == set(false.env.keys())
 
     env: Env = {}
-    for k in true.env:
+    for k in set(true.env.keys()) & set(false.env.keys()):
         # There's probably a more precise way of doing this
         l, r = true.env[k], false.env[k]
         if l is None or r is None or l != r:
@@ -452,7 +451,7 @@ def eval_instr(instr: bril.Instr, env: Env, space: isl.Space, aff_vars: set[str]
     args: list[isl.Aff | isl.Set] = []
     for arg in instr['args']:
         if arg not in env or env[arg] is None:
-            print(f'Calculating {dest}: {arg} is no good; {env=}')
+            # print(f'Calculating {dest}: {arg} is no good; {env=}')
             env[dest] = None
             return
         args.append(env[arg])
@@ -625,6 +624,8 @@ def command_to_static(func: relooper.StructuredFunction) -> StaticFunction:
                     raise Unhandled(f'inside of loop {label} does not branch back to the loop')
 
                 # find the loop domain
+                if contents_.true.env[iter_var] is None:
+                    raise Unhandled(f'Loop {label} does not have affine control (at least, not with {iter_var})')
                 stride = isl_aff_to_const(contents_.true.env[iter_var] - symbolic_loop_var)
                 if stride is None:
                     raise Unhandled(f'no constant loop stride for {label}: {contents_.true.env[iter_var]}')
@@ -646,7 +647,7 @@ def command_to_static(func: relooper.StructuredFunction) -> StaticFunction:
                 condition_ = env[condition]
                 if condition_ is None:
                     raise Unhandled(f'condition {condition} is not affine')
-                assert isinstance(condition_, isl.Set)
+                assert isinstance(condition_, isl.Set), f'{condition=} {env=}'
                 true_ = recurse(true, env, stack, space, space_list)
                 false_ = recurse(false, env, stack, space, space_list)
                 return make_branch(condition_, true_, false_, stack)
@@ -670,9 +671,16 @@ def command_to_static(func: relooper.StructuredFunction) -> StaticFunction:
             case _:
                 assert False  # missing case
 
+    param_types = { p['name']: p['type'] for p in func.args }
     initial_vars = [ p['name'] for p in func.args if p['name'] in aff_vars ]
     initial_space = isl.Space.create_from_names(isl_ctx, set=[], params=initial_vars)
-    initial_env = { v: isl_var_in_space(initial_space, v) for v in initial_vars }
+    initial_env: Env = {}
+    for v in initial_vars:
+        if param_types[v] == 'bool':
+            # TODO: this could totally be handled
+            raise Unhandled(f'Boolean control-flow parameter {v} in {func.name}')
+        else:
+            initial_env[v] = isl_var_in_space(initial_space, v)
     match recurse(func.code, initial_env, [], initial_space, {}):
         case SimpleRet(body):
             return StaticFunction(

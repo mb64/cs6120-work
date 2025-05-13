@@ -67,6 +67,10 @@ class DomTree:
         # Does x dominate y?
         return (x, y) in self.doms
 
+    def strictly_dominates(self, x: str, y: str) -> bool:
+        # Does x strictly dominate y?
+        return x != y and self.dominates(x, y)
+
 def dom_tree(pairs: list[tuple[str, str]], start: str) -> DomTree:
     doms = dominators(pairs, start)
 

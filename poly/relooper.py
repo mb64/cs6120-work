@@ -218,7 +218,7 @@ def to_structured_control_flow(cfg: bril.CFGFunction) -> StructuredFunction:
 
     headers: set[str] = set()
     for s, t in cfg.edges():
-        if numbering[t] < numbering[s]: # back-edge
+        if numbering[t] <= numbering[s]: # back-edge
             if not dom.dominates(t, s): # that's not a loop header
                 raise Unhandled(f'Irreducible control flow: {cfg.name}: edge from {s} to {t}')
             headers.add(t)
