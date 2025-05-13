@@ -1,9 +1,11 @@
 # A simplified polyhedral IR
 
-In this project, I set out to build a polyhedral IR for Bril programs.
-My original goal was to implement polyhedral optimizations on it; however,
-simply constructing and going out of a polyhedral IR ended up being complex
-enough that it filled my budget.
+In [this project][github], I set out to build a polyhedral IR for Bril
+programs.  My original goal was to implement polyhedral optimizations on it;
+however, simply constructing and going out of a polyhedral IR ended up being
+complex enough that it filled my budget.
+
+[github]: https://github.com/mb64/cs6120-work/tree/main/poly
 
 ## Background
 
