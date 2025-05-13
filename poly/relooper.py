@@ -6,8 +6,8 @@
 # c ::= block .l { c1 } c2            (l is in scope for c1 but not c2)
 #    |  loop .l { c }                 (l is in scope for c)
 #    |  instr_1; ...; instr_N; c
-#    |  if b then cs else c
-#    |  jmp l
+#    |  if b then c else c
+#    |  jmp .l
 #    |  ret v
 #
 # Blocks create a scoped "break" label for the _end_ of the block, while loops
